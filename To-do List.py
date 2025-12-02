@@ -1,99 +1,140 @@
-def display_menu():
-    """Displays the main menu options to the user."""
-    print("\n--- To-Do List Manager ---")
-    print("1. Add Task")
-    print("2. View Tasks")
-    print("3. Mark Task as Done")
-    print("4. Delete Task")
-    print("5. Exit")
+# Import the Tkinter library, which is built-in with Python for GUI development.
+import tkinter as tk
+# Import specific modules from Tkinter for dialog boxes (simple input/output).
+from tkinter import simpledialog, messagebox
 
-def add_task(todo_list):
-    """Prompts user for a task and adds it to the list."""
-    task = input("Enter the task description: ")
-    # Tasks are stored as a tuple: (description, status)
-    todo_list.append((task, "Pending"))
-    print(f"Task '{task}' added.")
+# --- Data Structure and Backend Logic ---
 
-def view_tasks(todo_list):
-    """Displays all tasks with their index and status."""
-    if not todo_list:
-        print("Your To-Do list is empty!")
-        return
+# Initialize the core data structure: a global list to hold all tasks.
+# Each task is stored as a tuple: (description_string, status_string: "Pending" or "Done").
+todo_list = []
 
-    print("\n--- Your Tasks ---")
-    for index, (task, status) in enumerate(todo_list):
-        # The index is 0-based, so we add 1 for user readability
-        print(f"{index + 1}. [{status}] {task}")
+# Function to add a task to the global list.
+def add_task_logic(task_desc):
+    """Adds a task to the global list and triggers a GUI update."""
+    # Append a new tuple to the list with the task description and "Pending" status.
+    todo_list.append((task_desc, "Pending"))
+    # Call the GUI function to refresh the listbox display.
+    update_listbox()
 
-def mark_done(todo_list):
-    """Allows the user to mark a task as 'Done'."""
-    view_tasks(todo_list)
-    if not todo_list:
-        return
+# Function to mark a task as Done based on its index in the list.
+def mark_done_logic(index):
+    """Marks a task at a given index as Done and triggers a GUI update."""
+    # Check if the provided index is valid (within the bounds of the list).
+    if 0 <= index < len(todo_list):
+        # Unpack the existing tuple at the index to get the description (first element).
+        task_desc, _ = todo_list[index]
+        # Overwrite the old tuple with a new one, changing the status to "Done".
+        # Tuples are immutable, so we must replace the whole item.
+        todo_list[index] = (task_desc, "Done")
+        # Call the GUI function to refresh the listbox display.
+        update_listbox()
 
+# Function to delete a task based on its index.
+def delete_task_logic(index):
+    """Deletes a task at a given index and triggers a GUI update."""
+    # Check if the provided index is valid.
+    if 0 <= index < len(todo_list):
+        # Use the pop() method to remove the item at the specific index.
+        todo_list.pop(index)
+        # Call the GUI function to refresh the listbox display.
+        update_listbox()
+
+# --- GUI Functions (Frontend Interface) ---
+
+# Function responsible for synchronizing the listbox display with the todo_list data.
+def update_listbox():
+    """Clears and re-populates the Listbox widget with current tasks."""
+    # Clear all existing items in the listbox, from index 0 to the end (tk.END).
+    listbox.delete(0, tk.END)
+    # Loop through every task (which is a tuple of (task, status)) in the backend list.
+    for task, status in todo_list:
+        # Create a formatted string (f-string) for display in the listbox.
+        display_text = f"[{status}] {task}"
+        # Insert the formatted string at the end of the listbox.
+        listbox.insert(tk.END, display_text)
+    # Clear any selection highlighting after the update to avoid confusing the user.
+    listbox.selection_clear(0, tk.END)
+
+# Function called when the "Add Task" button is clicked.
+def show_add_task_dialog():
+    """Opens a dialog for task input and handles addition."""
+    # Opens a simple Tkinter dialog to ask for a string input, storing the result in 'task'.
+    task = simpledialog.askstring("Add Task", "Enter the new task:")
+    # Check if the user entered any text (not empty) and didn't click Cancel (task is not None).
+    if task:
+        # Call the backend logic to add the task to the data list.
+        add_task_logic(task)
+        # Show a confirmation message box to the user.
+        messagebox.showinfo("Success", f"Task '{task}' added!")
+
+# Function called when the "Mark as Done" button is clicked.
+def mark_done_gui():
+    """Handles the GUI interaction for marking a task as done."""
+    # Use a try-except block for robust error handling if no item is selected.
     try:
-        task_num = int(input("Enter the number of the task to mark as Done: "))
-        # Convert user's 1-based input to 0-based index
-        index = task_num - 1
+        # Get the index of the currently selected item in the listbox.
+        # listbox.curselection() returns a tuple of indices; [0] gets the first one.
+        selected_index = listbox.curselection()[0]
+        # Call the backend logic with the found index.
+        mark_done_logic(selected_index)
+    # Catch the IndexError that occurs if listbox.curselection() returns an empty tuple (no item selected).
+    except IndexError:
+        # Display an error message box to prompt the user.
+        messagebox.showerror("Error", "Please select a task to mark as done.")
 
-        if 0 <= index < len(todo_list):
-            # Retrieve the task description
-            task_desc, _ = todo_list[index]
-            # Replace the old tuple with a new one having the 'Done' status
-            todo_list[index] = (task_desc, "Done")
-            print(f"Task {task_num} marked as Done.")
-        else:
-            print("Invalid task number.")
-
-    except ValueError:
-        print("Invalid input. Please enter a number.")
-
-def delete_task(todo_list):
-    """Allows the user to delete a task."""
-    view_tasks(todo_list)
-    if not todo_list:
-        return
-
+# Function called when the "Delete Task" button is clicked.
+def delete_task_gui():
+    """Handles the GUI interaction for deleting a task."""
+    # Use a try-except block for robust error handling.
     try:
-        task_num = int(input("Enter the number of the task to delete: "))
-        # Convert user's 1-based input to 0-based index
-        index = task_num - 1
+        # Get the index of the currently selected item.
+        selected_index = listbox.curselection()[0]
+        # Call the backend logic with the found index.
+        delete_task_logic(selected_index)
+    # Catch the IndexError if no item is selected.
+    except IndexError:
+        # Display an error message box.
+        messagebox.showerror("Error", "Please select a task to delete.")
 
-        if 0 <= index < len(todo_list):
-            # Delete the task using its index
-            deleted_task, _ = todo_list.pop(index)
-            print(f"Task '{deleted_task}' deleted.")
-        else:
-            print("Invalid task number.")
+# --- Main Application Setup ---
 
-    except ValueError:
-        print("Invalid input. Please enter a number.")
+# 1. Initialize the main window (the root object).
+root = tk.Tk()
+# Set the title displayed in the window's title bar.
+root.title("Python To-Do List GUI")
+# Set the initial size of the window (Width x Height).
+root.geometry("400x450")
 
-def main():
-    """The main function to run the To-Do List program."""
-    # The core data structure: a list to hold all tasks.
-    # Each task is a tuple (task_description, status)
-    todo_list = []
+# 2. Create the Listbox widget to display tasks.
+# Arguments: parent (root), height (lines visible), width (characters), border style.
+listbox = tk.Listbox(root, height=15, width=50, border=1)
+# Place the listbox widget in the window using the pack geometry manager.
+# pady=10 adds 10 pixels of padding above and below the widget.
+listbox.pack(pady=10)
 
-    # The main loop keeps the program running until the user chooses to exit
-    while True:
-        display_menu()
-        choice = input("Enter your choice (1-5): ")
+# 3. Create the buttons and associate them with functions using 'command'.
 
-        if choice == '1':
-            add_task(todo_list)
-        elif choice == '2':
-            view_tasks(todo_list)
-        elif choice == '3':
-            mark_done(todo_list)
-        elif choice == '4':
-            delete_task(todo_list)
-        elif choice == '5':
-            print("Exiting To-Do List Manager. Goodbye!")
-            break
-        else:
-            print("Invalid choice. Please enter a number between 1 and 5.")
+# Add Task Button setup.
+# The 'command' argument links the button click event to the function to execute.
+add_button = tk.Button(root, text="Add Task", command=show_add_task_dialog)
+# Place the button, stretching it horizontally (fill='x'), with horizontal and vertical padding.
+add_button.pack(fill='x', padx=20, pady=5)
 
-# This is the standard wy to run the main function when the script is executed
+# Mark Done Button setup.
+done_button = tk.Button(root, text="Mark as Done", command=mark_done_gui)
+# Place the button, maintaining consistent padding and filling the x-axis.
+done_button.pack(fill='x', padx=20, pady=5)
+
+# Delete Task Button setup.
+delete_button = tk.Button(root, text="Delete Task", command=delete_task_gui)
+# Place the button.
+delete_button.pack(fill='x', padx=20, pady=5)
+
+# 4. Start the Tkinter event loop.
+# This block ensures the code runs only when executed directly, not imported.
 if __name__ == "__main__":
-    main()
+    # Call the update function once to ensure the listbox is initialized (even if empty).
+    update_listbox()
+    # Start the event loop, which listens for user actions and keeps the window open.
+    root.mainloop()
