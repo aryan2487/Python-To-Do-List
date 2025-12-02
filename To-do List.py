@@ -1,5 +1,8 @@
 # Import the Tkinter library, which is built-in with Python for GUI development.
 import tkinter as tk
+# Add time for tracking duration and datetime for formatting the time delta
+import time 
+from datetime import timedelta
 # Import specific modules from Tkinter for dialog boxes (simple input/output) and ttk for scrollbar and Combobox.
 from tkinter import simpledialog, messagebox, ttk 
 
@@ -44,33 +47,48 @@ add_label = None # Added for global access
 add_button = None # Added for global access
 exit_button = None # Added for global access
 theme_selector = None # Added for global access
+stats_label = None # New label for displaying stats
+# NEW: Global variable to track the maximum number of tasks ever added during the session
+max_tasks_ever_added = 0 
 
 
 # --- Data Structure and Backend Logic ---
 
 # Initialize the core data structure: a global list to hold all tasks.
-# Each task is stored as a tuple: (description_string, status_boolean: True for Done, False for Pending).
+# Each task is now stored as a tuple: (desc, status, creation_time, completion_time).
 todo_list = []
 
 # Function to add a task to the global list.
 def add_task_logic(task_desc):
     """Adds a task to the global list and triggers a GUI update."""
-    # Append a new tuple to the list with the task description and False (Pending) status.
-    todo_list.append((task_desc, False))
+    global max_tasks_ever_added
+    # Append a new tuple: (desc, status=False, creation_time=now, completion_time=None)
+    todo_list.append((task_desc, False, time.time(), None))
+    # NEW: Update max tasks ever added during the session
+    max_tasks_ever_added = max(max_tasks_ever_added, len(todo_list)) 
     # Call the GUI function to refresh the task list display.
     update_task_list_display()
+    # update_stats() is now managed by the root.after loop.
 
 # Function called when a checkbox is toggled.
 def toggle_task_status(index):
-    """Flips the status of a task at a given index."""
+    """Flips the status of a task at a given index and updates its completion time."""
     # Check if the provided index is valid (within the bounds of the list).
     if 0 <= index < len(todo_list):
-        # Unpack the existing tuple at the index.
-        task_desc, current_status = todo_list[index]
-        # Overwrite the old tuple with a new one, flipping the boolean status (True becomes False, and vice-versa).
-        todo_list[index] = (task_desc, not current_status)
-        # Call the update function to re-render the list and apply any styling based on status (e.g., strikethrough).
-        # We call it here to refresh the look of the list after the state is toggled.
+        # Unpack the existing tuple, including time stamps.
+        task_desc, current_status, creation_time, completion_time = todo_list[index]
+        
+        new_status = not current_status
+        new_completion_time = None
+        
+        if new_status:
+            # Mark done: record current time as the completion time.
+            new_completion_time = time.time()
+        
+        # Overwrite the old tuple with a new one, flipping the boolean status and updating the time.
+        todo_list[index] = (task_desc, new_status, creation_time, new_completion_time)
+        
+        # Call the update function to re-render the list. Stats will update in the next 1-second cycle.
         update_task_list_display() 
 
 # Function to delete a task based on its index.
@@ -86,6 +104,19 @@ def delete_task_logic(index):
             todo_list.pop(index)
             # Call the GUI function to refresh the task list display.
             update_task_list_display()
+
+# Helper function to calculate session duration
+def calculate_session_duration_str():
+    """Calculates the total elapsed time since the first task was created."""
+    current_time = time.time()
+    if not todo_list:
+        total_duration_seconds = 0
+    else:
+        # Find the creation time of the very first task added (index 2 in the tuple)
+        earliest_creation_time = min(task[2] for task in todo_list) 
+        total_duration_seconds = current_time - earliest_creation_time
+        
+    return str(timedelta(seconds=int(total_duration_seconds)))
             
 # Function to handle mouse wheel scrolling
 def on_mousewheel(event):
@@ -100,6 +131,33 @@ def on_mousewheel(event):
         canvas.yview_scroll(-1, "units")
     elif event.num == 5:
         canvas.yview_scroll(1, "units")
+
+def update_stats():
+    """Calculates completed task count and total elapsed session time, updating the stats label in real-time."""
+    global stats_label, root
+    
+    completed_count = 0
+    
+    # Find the count of completed tasks
+    for _, status, _, _ in todo_list:
+        if status:
+            completed_count += 1
+    
+    # --- Calculate Elapsed Session Time using helper ---
+    total_duration_str = calculate_session_duration_str()
+    
+    stats_text = (
+        f"Completed: {completed_count} / {len(todo_list)} | "
+        f"Elapsed Session Time: {total_duration_str}" # Renamed label for clarity
+    )
+    
+    # Update the label if it has been created
+    if stats_label:
+        stats_label.config(text=stats_text)
+        
+    # Re-schedule this function to run again in 1000 milliseconds (1 second)
+    if root:
+        root.after(1000, update_stats) # Creates the real-time update loop
 
 
 # --- GUI Functions (Frontend Interface) ---
@@ -130,7 +188,7 @@ def update_task_list_display():
         widget.destroy()
 
     # Loop through every task in the backend list to create its corresponding widgets.
-    for index, (task, status) in enumerate(todo_list):
+    for index, (task, status, _, _) in enumerate(todo_list): # Unpack data structure including time (unused here)
         # Create a variable to hold the state of the Checkbutton for the current task.
         var = tk.BooleanVar(value=status)
         
@@ -197,6 +255,7 @@ def apply_theme_colors():
     
     # Apply colors to title and labels
     title_label.config(bg=current_theme['main_bg'], fg=current_theme['title_fg'])
+    stats_label.config(bg=current_theme['main_bg'], fg=current_theme['title_fg']) # New: Stats label color
     add_label.config(bg=current_theme['main_bg'], fg=current_theme['title_fg'])
     
     # Apply colors to buttons
@@ -316,7 +375,7 @@ def custom_ask_string(parent, title, prompt):
 class CustomAskYesNoDialog(tk.Toplevel):
     """Custom Yes/No confirmation dialog with colored background."""
     # ADD fg_color to constructor
-    def __init__(self, parent, title, message, bg_color, fg_color):
+    def __init__(self, parent, title, message, bg_color, fg_color, button_texts=("Yes, Exit", "Cancel")):
         super().__init__(parent)
         self.transient(parent)
         self.title(title)
@@ -324,11 +383,12 @@ class CustomAskYesNoDialog(tk.Toplevel):
         self.parent = parent
         self.bg_color = bg_color
         self.fg_color = fg_color # Store fg_color
+        self.button_texts = button_texts # Store custom button texts
         self.config(bg=self.bg_color)
         
         self.parent.update_idletasks()
-        w = 350
-        h = 150
+        w = 400
+        h = 200
         x = (self.parent.winfo_width() // 2) - (w // 2)
         y = (self.parent.winfo_height() // 2) - (h // 2)
         self.geometry(f'{w}x{h}+{x}+{y}')
@@ -343,15 +403,15 @@ class CustomAskYesNoDialog(tk.Toplevel):
         body.pack(padx=5, pady=5, fill='both', expand=True)
 
         # USE self.fg_color for the message label
-        tk.Label(body, text=message, bg=self.bg_color, font=("Arial", 12), fg=self.fg_color).pack(pady=10)
+        tk.Label(body, text=message, bg=self.bg_color, font=("Arial", 12), fg=self.fg_color, justify=tk.LEFT).pack(pady=10, fill='x')
 
         button_frame = tk.Frame(self, bg=self.bg_color)
         button_frame.pack(pady=5, padx=10)
 
         yes_button = tk.Button(
             button_frame, 
-            text="Yes, Delete", 
-            width=12, 
+            text=self.button_texts[0], # Use custom text for YES button
+            width=15, 
             command=self.yes_action,
             bg='#FFCCCC', 
             activebackground='#FF9999',
@@ -362,8 +422,8 @@ class CustomAskYesNoDialog(tk.Toplevel):
 
         no_button = tk.Button(
             button_frame, 
-            text="No, Keep It", 
-            width=12, 
+            text=self.button_texts[1], # Use custom text for NO button
+            width=15, 
             command=self.no_action,
             bg='#CCDDDD', 
             activebackground='#DDFFFF',
@@ -380,12 +440,13 @@ class CustomAskYesNoDialog(tk.Toplevel):
         self.result = False
         self.destroy()
 
-def custom_ask_yes_no(parent, title, message):
+def custom_ask_yes_no(parent, title, message, button_texts=("Yes, Delete", "No, Keep It")):
     """Utility function to create and run the custom yes/no dialog, passing the current theme color."""
     # PASSES CURRENT THEME BG AND FG COLOR
     dialog = CustomAskYesNoDialog(parent, title, message, 
                                   bg_color=current_theme['main_bg'], 
-                                  fg_color=current_theme['title_fg']) 
+                                  fg_color=current_theme['title_fg'],
+                                  button_texts=button_texts) 
     return dialog.result
 
 def show_add_task_dialog():
@@ -399,12 +460,38 @@ def show_add_task_dialog():
         # REMOVED confirmation message box for cleaner workflow
         # messagebox.showinfo("Success", f"Task '{task}' added!")
 
+def show_exit_summary():
+    """Calculates final session metrics, displays a summary, and exits if confirmed."""
+    global root, max_tasks_ever_added
+
+    # 1. Calculate metrics
+    final_elapsed_time = calculate_session_duration_str()
+    
+    # 2. Build summary message
+    summary_message = (
+        f"Session Summary:\n\n"
+        f"Tasks added (Max): {max_tasks_ever_added}\n"
+        f"Total session duration: {final_elapsed_time}\n\n"
+        f"Are you sure you want to end the session?"
+    )
+
+    # 3. Open custom confirmation dialog (repurposing custom_ask_yes_no)
+    if custom_ask_yes_no(
+        root, 
+        "Session Complete & Exit", 
+        summary_message,
+        button_texts=("Yes, End Session", "Cancel")
+    ):
+        # If the user clicks 'Yes, End Session', destroy the main window
+        root.destroy()
+
+
 # --- Main Application Setup ---
 
 # Rename initialize_main_app to main and remove selected_theme_name argument for simplicity
 def main():
     """Initializes and runs the main To-Do List GUI."""
-    global root, list_title_var, canvas, task_frame, title_frame, add_control_frame, title_label, add_label, add_button, exit_button, theme_selector
+    global root, list_title_var, canvas, task_frame, title_frame, add_control_frame, title_label, add_label, add_button, exit_button, theme_selector, stats_label
     
     # 1. Initialize the main window (the root object).
     root = tk.Tk()
@@ -439,6 +526,17 @@ def main():
     # Place the title label on the left of the title frame, spanning two rows to make space for buttons.
     title_label.grid(row=0, column=0, rowspan=1, sticky='w')
     
+    # NEW: Stats Label (Row 1, below the main title)
+    stats_label = tk.Label(
+        title_frame,
+        text="", # Will be set by update_stats
+        font=("Arial", 12),
+        anchor='w'
+    )
+    # Place the stats label below the title in the title frame
+    stats_label.grid(row=1, column=0, sticky='w', pady=(5, 0))
+
+
     # Create the "Set Name" button.
     set_name_button = tk.Button(
         title_frame,
@@ -532,8 +630,8 @@ def main():
     # Exit Button for fullscreen mode.
     exit_button = tk.Button(
         root,
-        text="Done with all the tasks", # Removed F11 text as requested
-        command=root.destroy, # The built-in command to close the window
+        text="Done with all the tasks", 
+        command=show_exit_summary, # NEW: Calls the summary function instead of destroying immediately
         relief=tk.GROOVE
     )
     # The button is placed in Row 3.
@@ -549,6 +647,7 @@ def main():
     
     # Call the update function once to populate the list upon startup.
     update_task_list_display()
+    update_stats() # New: Call update_stats initially, which starts the root.after loop
     
     # Start the event loop, which listens for user actions.
     root.mainloop()
