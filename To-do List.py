@@ -94,6 +94,6 @@ def main():
         else:
             print("Invalid choice. Please enter a number between 1 and 5.")
 
-# This is the standard way to run the main function when the script is executed
+# This is the standard wy to run the main function when the script is executed
 if __name__ == "__main__":
     main()
